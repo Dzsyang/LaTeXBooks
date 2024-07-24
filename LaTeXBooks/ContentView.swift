@@ -11,6 +11,7 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @State private var pdfDocuments: [PDFDocument] = []
+    @State private var pdfDirectory: URL?
 
     var body: some View {
         VStack {
@@ -23,6 +24,12 @@ struct ContentView: View {
                     importPDF()
                 }) {
                     Text("Import PDF")
+                }
+                .padding()
+                Button(action: {
+                    chooseDirectory()
+                }) {
+                    Text("Choose Directory")
                 }
                 .padding()
             }
@@ -48,6 +55,7 @@ struct ContentView: View {
             }
         }
         .padding()
+        .onAppear(perform: loadPDFs)
     }
 
     func importPDF() {
@@ -57,8 +65,24 @@ struct ContentView: View {
         if panel.runModal() == .OK {
             for url in panel.urls {
                 if let document = PDFDocument(url: url) {
+                    savePDF(url: url)
                     pdfDocuments.append(document)
                 }
+            }
+        }
+    }
+
+    func chooseDirectory() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+
+        if panel.runModal() == .OK {
+            if let selectedDirectory = panel.url {
+                pdfDirectory = selectedDirectory
+                UserDefaults.standard.set(selectedDirectory.path, forKey: "pdfDirectory")
+                loadPDFs()
             }
         }
     }
@@ -73,6 +97,46 @@ struct ContentView: View {
     func deletePDF(document: PDFDocument) {
         if let index = pdfDocuments.firstIndex(of: document) {
             pdfDocuments.remove(at: index)
+            deletePDFFile(document: document)
+        }
+    }
+
+    func savePDF(url: URL) {
+        guard let pdfDirectory = pdfDirectory else { return }
+        let destinationURL = pdfDirectory.appendingPathComponent(url.lastPathComponent)
+        do {
+            try FileManager.default.copyItem(at: url, to: destinationURL)
+        } catch {
+            print("Error saving PDF: \(error)")
+        }
+    }
+
+    func loadPDFs() {
+        pdfDocuments.removeAll()
+        if let savedPath = UserDefaults.standard.string(forKey: "pdfDirectory") {
+            pdfDirectory = URL(fileURLWithPath: savedPath)
+        }
+
+        guard let pdfDirectory = pdfDirectory else { return }
+
+        do {
+            let pdfFiles = try FileManager.default.contentsOfDirectory(at: pdfDirectory, includingPropertiesForKeys: nil, options: [])
+            for url in pdfFiles where url.pathExtension.lowercased() == "pdf" {
+                if let document = PDFDocument(url: url) {
+                    pdfDocuments.append(document)
+                }
+            }
+        } catch {
+            print("Error loading PDFs: \(error)")
+        }
+    }
+
+    func deletePDFFile(document: PDFDocument) {
+        guard let documentURL = document.documentURL else { return }
+        do {
+            try FileManager.default.removeItem(at: documentURL)
+        } catch {
+            print("Error deleting PDF: \(error)")
         }
     }
 }
